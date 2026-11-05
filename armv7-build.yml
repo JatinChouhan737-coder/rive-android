@@ -1,0 +1,70 @@
+
+name: Build Rive Android ARMv7
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Initialize submodules
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule sync --recursive
+          git submodule update --init --recursive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android packages
+        run: |
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang glslang-tools libgl1-mesa-dev libvorbis-dev libvpx-dev ninja-build spirv-tools uuid-dev
+
+      - name: Install Premake
+        run: |
+          curl -fsSL -o premake.tar.gz https://github.com/premake/premake-core/releases/download/v5.0.0-beta2/premake-5.0.0-beta2-linux.tar.gz
+          tar -xzf premake.tar.gz
+          sudo install -m 0755 premake5 /usr/local/bin/premake5
+
+      - name: Build ARMv7 AAR
+        run: ./gradlew --no-daemon :kotlin:assembleRelease -PabiFilters=armeabi-v7a
+
+      - name: Build ARMv7 Sample APK
+        run: ./gradlew --no-daemon :app:assemblePreview -PabiFilters=armeabi-v7a
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rive-android-armv7
+          path: |
+            kotlin/build/outputs/aar/*.aar
+            app/build/outputs/apk/preview/*.apk
+          if-no-files-found: error
+          retention-days: 14
